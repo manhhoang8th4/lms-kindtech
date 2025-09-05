@@ -1,61 +1,82 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const User = require("../models/user"); // không cần .js
+const User = require("../models/auth");
 
 const router = express.Router();
 
-// Đăng ký tài khoản
+// Register
 router.post("/register", async (req, res) => {
   try {
-    const { username, password, role } = req.body;
+    const { firstName, lastName, email, password, confirmPassword } = req.body;
 
-    // kiểm tra user tồn tại
-    const existing = await User.findOne({ username });
+    // validate required fields
+    if (!firstName || !lastName || !email || !password || !confirmPassword) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    // check confirm password
+    if (password !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    // check existing email
+    const existing = await User.findOne({ email });
     if (existing) {
-      return res.status(400).json({ message: "Tài khoản đã tồn tại" });
+      return res.status(400).json({ message: "Email already registered" });
     }
 
     // hash password
     const hashed = await bcrypt.hash(password, 10);
 
-    const user = new User({ username, password: hashed, role });
+    // create user
+    const user = new User({
+      firstName,
+      lastName,
+      email,
+      password: hashed,
+    });
     await user.save();
 
-    res.json({ message: "Đăng ký thành công", user: { username, role } });
+    res.json({
+      message: "Registration successful",
+      user: { firstName, lastName, email },
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// Đăng nhập
+// Login (giữ nguyên như bạn có)
 router.post("/login", async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
 
-    // tìm user
-    const user = await User.findOne({ username });
+    // tìm user theo email (có thể đổi tùy model)
+    const user = await User.findOne({ email: email });
     if (!user) {
-      return res.status(400).json({ message: "Sai tài khoản hoặc mật khẩu" });
+      return res.status(400).json({ message: "Invalid email or password" });
     }
 
-    // so sánh mật khẩu
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: "Sai tài khoản hoặc mật khẩu" });
+      return res.status(400).json({ message: "Invalid email or password" });
     }
 
-    // tạo JWT
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id },
       process.env.JWT_SECRET || "secret_key",
       { expiresIn: "1d" },
     );
 
     res.json({
-      message: "Đăng nhập thành công",
+      message: "Login successful",
       token,
-      user: { username: user.username, role: user.role },
+      user: {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+      },
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
